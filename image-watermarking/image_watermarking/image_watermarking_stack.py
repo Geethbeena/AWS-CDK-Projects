@@ -1,9 +1,12 @@
 from aws_cdk import (
     # Duration,
+    core,
     Stack,
-    # aws_sqs as sqs,
+    aws_s3 as s3,
+    aws_lambda as _lambda
 )
 from constructs import Construct
+import os, subprocess
 
 class ImageWatermarkingStack(Stack):
 
@@ -12,8 +15,40 @@ class ImageWatermarkingStack(Stack):
 
         # The code that defines your stack goes here
 
-        # example resource
-        # queue = sqs.Queue(
-        #     self, "ImageWatermarkingQueue",
-        #     visibility_timeout=Duration.seconds(300),
-        # )
+        bucket = s3.Bucket(self, 
+            "MyImageBucket",
+            versioned=True,
+            removal_policy=core.RemovalPolicy.DESTROY
+        )
+
+        access_point = s3.CfnAccessPoint(self, "MyImageBucketAccessPoint",
+                                         bucket = bucket.bucket_name,
+                                         name="my-access-point")
+        
+        my_lambda = _lambda.Function(
+            self,
+            id="MyLambda",
+            runtime=_lambda.Runtime.PYTHON_3_10,
+            handler="index.handler",
+            code=_lambda.Code.from_asset("lambda"),
+            layers=[self.create_dependencies_layer(self.stack_name, "lambda/index")],
+        )
+    
+    def create_dependencies_layer(self, project_name, function_name: str) -> _lambda.LayerVersion:
+        requirements_file = "lambda/requirements.txt"  # 👈🏽 point to requirements.txt
+        output_dir = f".build/app"  # 👈🏽 a temporary directory to store the dependencies
+
+        if not os.environ.get("SKIP_PIP"):
+            # 👇🏽 download the dependencies and store them in the output_dir
+            subprocess.check_call(f"pip install -r {requirements_file} -t {output_dir}/python".split())
+
+        layer_id = f"{project_name}-{function_name}-dependencies"  # 👈🏽 a unique id for the layer
+        layer_code = _lambda.Code.from_asset(output_dir)  # 👈🏽 import the dependencies / code
+
+        my_layer = _lambda.LayerVersion(
+            self,
+            layer_id,
+            code=layer_code,
+        )
+
+        return my_layer
