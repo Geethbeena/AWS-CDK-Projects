@@ -3,7 +3,8 @@ from aws_cdk import (
     core,
     Stack,
     aws_s3 as s3,
-    aws_lambda as _lambda
+    aws_lambda as _lambda,
+    aws_s3objectlambda as s3objectlambda
 )
 from constructs import Construct
 import os, subprocess
@@ -24,6 +25,7 @@ class ImageWatermarkingStack(Stack):
         access_point = s3.CfnAccessPoint(self, "MyImageBucketAccessPoint",
                                          bucket = bucket.bucket_name,
                                          name="my-access-point")
+    
         
         my_lambda = _lambda.Function(
             self,
@@ -32,6 +34,27 @@ class ImageWatermarkingStack(Stack):
             handler="index.handler",
             code=_lambda.Code.from_asset("lambda"),
             layers=[self.create_dependencies_layer(self.stack_name, "lambda/index")],
+        )
+
+        content_transformation_property = s3objectlambda.CfnAccessPoint.ContentTransformationProperty(
+            aws_lambda=s3objectlambda.CfnAccessPoint.AwsLambdaProperty(
+                function_arn=my_lambda.function_arn
+            )
+        )
+
+        cfn_access_point = s3objectlambda.CfnAccessPoint(self, "MyCfnAccessPoint",
+            object_lambda_configuration=s3objectlambda.CfnAccessPoint.ObjectLambdaConfigurationProperty(
+                supporting_access_point=access_point.name,
+                transformation_configurations=[s3objectlambda.CfnAccessPoint.TransformationConfigurationProperty(
+                    actions=["GetObject"],
+                    content_transformation=content_transformation_property
+                )],
+
+                # the properties below are optional
+                allowed_features=["allowedFeatures"],
+                cloud_watch_metrics_enabled=False
+            ),
+
         )
     
     def create_dependencies_layer(self, project_name, function_name: str) -> _lambda.LayerVersion:
