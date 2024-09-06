@@ -1,10 +1,11 @@
 from aws_cdk import (
     # Duration,
-    core,
+    
     Stack,
     aws_s3 as s3,
     aws_lambda as _lambda,
-    aws_s3objectlambda as s3objectlambda
+    aws_s3objectlambda as s3objectlambda,
+    aws_iam as iam
 )
 from constructs import Construct
 import os, subprocess
@@ -19,7 +20,6 @@ class ImageWatermarkingStack(Stack):
         bucket = s3.Bucket(self, 
             "MyImageBucket",
             versioned=True,
-            removal_policy=core.RemovalPolicy.DESTROY
         )
 
         access_point = s3.CfnAccessPoint(self, "MyImageBucketAccessPoint",
@@ -36,26 +36,59 @@ class ImageWatermarkingStack(Stack):
             layers=[self.create_dependencies_layer(self.stack_name, "lambda/index")],
         )
 
+        my_lambda.add_to_role_policy(
+             iam.PolicyStatement(
+                actions=["s3-object-lambda:WriteGetObjectResponse"],
+                resources=["*"]
+            )   
+        )
+
         content_transformation_property = s3objectlambda.CfnAccessPoint.ContentTransformationProperty(
             aws_lambda=s3objectlambda.CfnAccessPoint.AwsLambdaProperty(
                 function_arn=my_lambda.function_arn
             )
         )
 
-        cfn_access_point = s3objectlambda.CfnAccessPoint(self, "MyCfnAccessPoint",
+        # Create the S3 Object Lambda Access Point
+        # object_lambda_access_point = s3objectlambda.CfnAccessPoint(
+        #     self, "MyLambdaObjectAccessPoint",
+        #     object_lambda_configuration={
+        #         "SupportingAccessPoint": access_point.attr_arn,
+        #         "TransformationConfigurations": [
+        #             {
+        #                 "Actions": ["GetObject"],
+        #                 "ContentTransformation":  {
+        #                     "AwsLambda": {
+        #                         "FunctionArn": my_lambda.function_arn
+        #                     }
+        #                 }
+        #             }
+        #         ]
+        #     }
+        # )
+
+        cfn_access_point = s3objectlambda.CfnAccessPoint(self, "MyLambdaObjectAccessPoint",
             object_lambda_configuration=s3objectlambda.CfnAccessPoint.ObjectLambdaConfigurationProperty(
-                supporting_access_point=access_point.name,
+                supporting_access_point=access_point.attr_arn,
                 transformation_configurations=[s3objectlambda.CfnAccessPoint.TransformationConfigurationProperty(
                     actions=["GetObject"],
-                    content_transformation=content_transformation_property
-                )],
-
-                # the properties below are optional
-                allowed_features=["allowedFeatures"],
-                cloud_watch_metrics_enabled=False
-            ),
+                    content_transformation= {
+                        "AwsLambda" : {
+                            "FunctionArn" : my_lambda.function_arn
+                        }
+                    }
+                )]
+            )
 
         )
+
+        # object_lambda_access_point.add_override(
+        #     "Properties.ObjectLambdaConfiguration.TransformationConfigurations.0.ContentTransformation.AwsLambda.FunctionArn",
+        #     my_lambda.function_arn
+        # )
+
+
+        my_lambda.grant_invoke(iam.ServicePrincipal("s3-object-lambda.amazonaws.com"))
     
     def create_dependencies_layer(self, project_name, function_name: str) -> _lambda.LayerVersion:
         requirements_file = "lambda/requirements.txt"  # 👈🏽 point to requirements.txt
