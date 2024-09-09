@@ -30,7 +30,7 @@ class ImageWatermarkingStack(Stack):
         my_lambda = _lambda.Function(
             self,
             id="MyLambda",
-            runtime=_lambda.Runtime.PYTHON_3_10,
+            runtime=_lambda.Runtime.PYTHON_3_8,
             handler="index.handler",
             code=_lambda.Code.from_asset("lambda"),
             layers=[self.create_dependencies_layer(self.stack_name, "lambda/index")],
@@ -49,24 +49,6 @@ class ImageWatermarkingStack(Stack):
             )
         )
 
-        # Create the S3 Object Lambda Access Point
-        # object_lambda_access_point = s3objectlambda.CfnAccessPoint(
-        #     self, "MyLambdaObjectAccessPoint",
-        #     object_lambda_configuration={
-        #         "SupportingAccessPoint": access_point.attr_arn,
-        #         "TransformationConfigurations": [
-        #             {
-        #                 "Actions": ["GetObject"],
-        #                 "ContentTransformation":  {
-        #                     "AwsLambda": {
-        #                         "FunctionArn": my_lambda.function_arn
-        #                     }
-        #                 }
-        #             }
-        #         ]
-        #     }
-        # )
-
         cfn_access_point = s3objectlambda.CfnAccessPoint(self, "MyLambdaObjectAccessPoint",
             object_lambda_configuration=s3objectlambda.CfnAccessPoint.ObjectLambdaConfigurationProperty(
                 supporting_access_point=access_point.attr_arn,
@@ -82,29 +64,26 @@ class ImageWatermarkingStack(Stack):
 
         )
 
-        # object_lambda_access_point.add_override(
-        #     "Properties.ObjectLambdaConfiguration.TransformationConfigurations.0.ContentTransformation.AwsLambda.FunctionArn",
-        #     my_lambda.function_arn
-        # )
-
 
         my_lambda.grant_invoke(iam.ServicePrincipal("s3-object-lambda.amazonaws.com"))
     
     def create_dependencies_layer(self, project_name, function_name: str) -> _lambda.LayerVersion:
-        requirements_file = "lambda/requirements.txt"  # 👈🏽 point to requirements.txt
-        output_dir = f".build/app"  # 👈🏽 a temporary directory to store the dependencies
+        requirements_file = "lambda/requirements.txt"  # point to requirements.txt
+        output_dir = f".build/app"  # a temporary directory to store the dependencies
 
         if not os.environ.get("SKIP_PIP"):
-            # 👇🏽 download the dependencies and store them in the output_dir
-            subprocess.check_call(f"pip install -r {requirements_file} -t {output_dir}/python".split())
+           
+            # download the dependencies and store them in the output_dir
+            subprocess.check_call(f"pip install --upgrade -r {requirements_file} -t {output_dir}/python".split())
 
-        layer_id = f"{project_name}-{function_name}-dependencies"  # 👈🏽 a unique id for the layer
-        layer_code = _lambda.Code.from_asset(output_dir)  # 👈🏽 import the dependencies / code
+        layer_id = f"{project_name}-{function_name}-dependencies"  # a unique id for the layer
+        layer_code = _lambda.Code.from_asset(output_dir)  # import the dependencies / code
 
         my_layer = _lambda.LayerVersion(
             self,
             layer_id,
             code=layer_code,
+            compatible_runtimes=[_lambda.Runtime.PYTHON_3_8]
         )
 
         return my_layer
