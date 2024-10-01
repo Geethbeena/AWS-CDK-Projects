@@ -2,7 +2,7 @@
 
 This project is the IAC implementation of a configuration that uses Amazon s3 object Lambda.
 
-Project reference : [Refer here]https://aws.amazon.com/getting-started/hands-on/amazon-s3-object-lambda-to-dynamically-watermark-images/
+Project reference : https://aws.amazon.com/getting-started/hands-on/amazon-s3-object-lambda-to-dynamically-watermark-images/
 
 ## Useful commands
 
